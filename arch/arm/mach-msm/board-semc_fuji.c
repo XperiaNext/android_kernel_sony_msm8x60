@@ -129,6 +129,7 @@
 #include "rpm_resources.h"
 #include "acpuclock.h"
 #include "pm-boot.h"
+#include "board-storage-common-a.h"
 
 #include <linux/ion.h>
 #include <mach/ion.h>
@@ -198,6 +199,10 @@
 
 #define DSPS_PIL_GENERIC_NAME		"dsps"
 #define DSPS_PIL_FLUID_NAME		"dsps_fluid"
+
+#ifdef CONFIG_CPU_FREQ_GOV_INTELLIDEMAND
+int id_set_two_phase_freq(int cpufreq);
+#endif
 
 #ifdef CONFIG_ION_MSM
 static struct platform_device ion_dev;
@@ -2427,7 +2432,7 @@ static struct msm_i2c_ssbi_platform_data msm_ssbi3_pdata = {
 #define MSM_FB_EXT_BUF_SIZE \
 		(roundup((720 * 576 * 2), 4096) * 2) /* 2 bpp x 2 pages */
 #else
-#define MSM_FB_EXT_BUFT_SIZE	0
+#define MSM_FB_EXT_BUF_SIZE	0
 #endif
 
 /* Note: must be multiple of 4096 */
@@ -2818,12 +2823,16 @@ static struct resource hdmi_msm_resources[] = {
 static int hdmi_enable_5v(int on);
 static int hdmi_core_power(int on, int show);
 static int hdmi_cec_power(int on);
+static int hdmi_gpio_config(int on);
+static int hdmi_panel_power(int on);
 
 static struct msm_hdmi_platform_data hdmi_msm_data = {
 	.irq = HDMI_IRQ,
 	.enable_5v = hdmi_enable_5v,
 	.core_power = hdmi_core_power,
 	.cec_power = hdmi_cec_power,
+	.gpio_config = hdmi_gpio_config,
+	.panel_power = hdmi_panel_power,
 };
 
 static struct platform_device hdmi_msm_device = {
@@ -4192,7 +4201,7 @@ static struct ion_cp_heap_pdata cp_wb_ion_pdata = {
 
 static struct ion_co_heap_pdata fw_co_ion_pdata = {
 	.adjacent_mem_id = ION_CP_MM_HEAP_ID,
-	.align = SZ_128K,
+	.align = PAGE_SIZE,
 };
 
 static struct ion_co_heap_pdata co_ion_pdata = {
@@ -6497,42 +6506,6 @@ static unsigned int msm8x60_sdcc_slot_status(struct device *dev)
 #endif
 #endif
 
-#ifdef	CONFIG_MMC_MSM_SDC4_SUPPORT
-static int msm_sdcc_cfg_mpm_sdiowakeup(struct device *dev, unsigned mode)
-{
-	struct platform_device *pdev;
-	enum msm_mpm_pin pin;
-	int ret = 0;
-
-	pdev = container_of(dev, struct platform_device, dev);
-
-	/* Only SDCC4 slot connected to WLAN chip has wakeup capability */
-	if (pdev->id == 4)
-		pin = MSM_MPM_PIN_SDC4_DAT1;
-	else
-		return -EINVAL;
-
-	switch (mode) {
-	case SDC_DAT1_DISABLE:
-		ret = msm_mpm_enable_pin(pin, 0);
-		break;
-	case SDC_DAT1_ENABLE:
-		ret = msm_mpm_set_pin_type(pin, IRQ_TYPE_LEVEL_LOW);
-		ret = msm_mpm_enable_pin(pin, 1);
-		break;
-	case SDC_DAT1_ENWAKE:
-		ret = msm_mpm_set_pin_wake(pin, 1);
-		break;
-	case SDC_DAT1_DISWAKE:
-		ret = msm_mpm_set_pin_wake(pin, 0);
-		break;
-	default:
-		ret = -EINVAL;
-		break;
-	}
-	return ret;
-}
-#endif
 #endif
 
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
@@ -6549,6 +6522,7 @@ static struct mmc_platform_data msm8x60_sdc1_data = {
 	.msmsdcc_fmax	= 48000000,
 	.nonremovable	= 1,
 	.pclk_src_dfab	= 1,
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -6570,6 +6544,7 @@ static struct mmc_platform_data msm8x60_sdc2_data = {
 #ifdef CONFIG_MSM_SDIO_AL
 	.is_sdio_al_client = 1,
 #endif
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -6590,6 +6565,7 @@ static struct mmc_platform_data msm8x60_sdc3_data = {
 	.msmsdcc_fmax	= 48000000,
 	.nonremovable	= 0,
 	.pclk_src_dfab  = 1,
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -6605,7 +6581,8 @@ static struct mmc_platform_data msm8x60_sdc4_data = {
 	.pclk_src_dfab  = 1,
 	.status			= fuji_wifi_status,
 	.register_status_notify = fuji_wifi_status_register,
-	.cfg_mpm_sdiowakeup = msm_sdcc_cfg_mpm_sdiowakeup,
+	.mpm_sdiowakeup_int = MSM_MPM_PIN_SDC4_DAT1,
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -6627,6 +6604,7 @@ static struct mmc_platform_data msm8x60_sdc5_data = {
 #ifdef CONFIG_MSM_SDIO_AL
 	.is_sdio_al_client = 1,
 #endif
+	.msm_bus_voting_data = &sps_to_ddr_bus_voting_data,
 };
 #endif
 
@@ -6804,6 +6782,32 @@ static int hdmi_core_power(int on, int show)
 				"8058_l16", rc);
 			return rc;
 		}
+		pr_info("%s(on): success\n", __func__);
+	} else {
+		gpio_free(170);
+		gpio_free(171);
+		gpio_free(172);
+		rc = regulator_disable(reg_8058_l16);
+		if (rc)
+			pr_warning("'%s' regulator disable failed, rc=%d\n",
+				"8058_l16", rc);
+		pr_info("%s(off): success\n", __func__);
+	}
+
+	prev_on = on;
+
+	return 0;
+}
+
+static int hdmi_gpio_config(int on)
+{
+	int rc = 0;
+	static int prev_on;
+
+	if (on == prev_on)
+		return 0;
+
+	if (on) {
 		rc = gpio_request(170, "HDMI_DDC_CLK");
 		if (rc) {
 			pr_err("'%s'(%d) gpio_request failed, rc=%d\n",
@@ -6822,16 +6826,14 @@ static int hdmi_core_power(int on, int show)
 				"HDMI_HPD", 172, rc);
 			goto error3;
 		}
-		pr_info("%s(on): success\n", __func__);
+		pr_debug("%s(on): success\n", __func__);
+
 	} else {
 		gpio_free(170);
 		gpio_free(171);
 		gpio_free(172);
-		rc = regulator_disable(reg_8058_l16);
-		if (rc)
-			pr_warning("'%s' regulator disable failed, rc=%d\n",
-				"8058_l16", rc);
-		pr_info("%s(off): success\n", __func__);
+
+		pr_debug("%s(off): success\n", __func__);
 	}
 
 	prev_on = on;
@@ -6843,7 +6845,6 @@ error3:
 error2:
 	gpio_free(170);
 error1:
-	regulator_disable(reg_8058_l16);
 	return rc;
 }
 
@@ -6872,6 +6873,19 @@ static int hdmi_cec_power(int on)
 
 	return 0;
 error:
+	return rc;
+}
+
+static int hdmi_panel_power(int on)
+{
+	int rc;
+
+	pr_debug("%s: HDMI Core: %s\n", __func__, (on ? "ON" : "OFF"));
+	rc = hdmi_core_power(on, 1);
+	if (rc)
+		rc = hdmi_cec_power(on);
+
+	pr_debug("%s: HDMI Core: %s Success\n", __func__, (on ? "ON" : "OFF"));
 	return rc;
 }
 
@@ -7773,7 +7787,12 @@ static struct msm_board_data msm8x60_fuji_board_data __initdata = {
 
 static void __init msm8x60_init(struct msm_board_data *board_data)
 {
+
 	uint32_t soc_platform_version;
+
+	#ifdef CONFIG_CPU_FREQ_GOV_INTELLIDEMAND
+	  id_set_two_phase_freq(1134000);
+	#endif
 
 	pmic_reset_irq = PM8058_IRQ_BASE + PM8058_RESOUT_IRQ;
 	/*
