@@ -1,0 +1,91 @@
+#!/bin/sh 
+#
+# Ramdisk init process for booting Mer on Xperia acro S
+# Copyright (C) 2012 Marko Saukko
+# Copyright (C) 2013 BPaul
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+# IRC: Sage @ #mer & #nemomobile @ Freenode
+
+echo "Creating directories..."
+mkdir -p /proc
+mkdir -p /sys
+mkdir -p /dev
+mkdir -p /sdpart
+mkdir -p /mnt
+
+echo "Mounting base..."
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs devtmpfs /dev
+
+fail() {
+    echo "Failed"
+    echo "$1"
+    exec /bin/sh
+}
+
+echo "Starting ramdisk.."
+echo "Waiting 3 seconds for a key press (volume up/down or power) to enable ramdisk shell.."
+
+# /dev/input/event2
+# 114 Volume down
+# 115 Volume up
+# 116 Power
+
+key=`/sbin/evkey -u -t 3000 /dev/input/event0`
+
+if [ "x${key}" != "x" ]; then
+    echo "Key with code ${key} pressed, dropping to /bin/sh inside ramdisk."
+    exec /bin/sh
+fi
+
+NET_IF="usb0"
+NET_IP="192.168.2.15"
+
+/sbin/ifconfig ${NET_IF}
+if [ $? -eq 0 ]; then
+  echo "Found ${NET_IF}, trying to enable it and setup IP ${NET_IP}."
+  /sbin/ifconfig usb0 ${NET_IP} up
+  if [ $? -eq 0 ]; then
+    echo "Successfully enabled ${NET_IF} with ${NET_IP} sleeping 5 seconds."
+    sleep 5
+  else
+    echo "Failed to setup ${NET_IF} with ${NET_IP}.."
+  fi
+fi
+
+LOOP_DEV="/dev/loop0"
+SD_DEV="/dev/mmcblk0p15"
+SD_PART="/sdpart"
+NEMO="${SD_PART}/nemo.img"
+ROOTFSMNTDIR="/mnt"
+
+echo "Mounting..."
+mount ${SD_DEV} ${SD_PART}
+
+echo "Booting Nemo Mobile..."
+losetup ${LOOP_DEV} ${NEMO}
+mount ${LOOP_DEV} ${ROOTFSMNTDIR}
+
+INITBIN="/sbin/init"
+
+umount -l /dev
+umount -l /sys
+umount -l /proc
+
+echo "Switching to rootfs at ${ROOTFSMNTDIR}, with init ${INITBIN}..."
+exec switch_root ${ROOTFSMNTDIR} ${INITBIN}
