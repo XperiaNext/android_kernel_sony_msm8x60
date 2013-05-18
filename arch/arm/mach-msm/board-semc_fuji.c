@@ -3263,6 +3263,8 @@ static struct apds9702_platform_data apds9702_pdata = {
 	.phys_dev_path = "/sys/devices/i2c-3/3-0054"
 };
 
+
+#ifdef CONFIG_INPUT_AKM8972
 static int akm897x_gpio_setup(void)
 {
 	int rc;
@@ -3287,6 +3289,7 @@ static void akm897x_power_mode(int enable)
 {
 	return;
 }
+#endif  //FIX BUILD CRASH
 
 #ifdef CONFIG_INPUT_AKM8975
 static struct akm8975_platform_data akm8975_platform_data = {

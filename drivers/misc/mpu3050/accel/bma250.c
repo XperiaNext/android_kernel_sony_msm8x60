@@ -368,6 +368,7 @@ static int bma250_get_config(void *mlsl_handle,
  *
  *  @return ML_SUCCESS if successful or a non-zero error code.
  */
+#ifdef CONFIG_INPUT_BMA250_NG
 static int bma250_suspend(void *mlsl_handle,
 			  struct ext_slave_descr *slave,
 			  struct ext_slave_platform_data *pdata)
@@ -393,7 +394,7 @@ static int bma250_suspend(void *mlsl_handle,
 	}
 	return result;
 }
-
+#endif //FIX BUILD CRASH
 /**
  *  @brief resume the device in the proper power state given the configuration
  *         chosen.
@@ -407,6 +408,8 @@ static int bma250_suspend(void *mlsl_handle,
  *
  *  @return ML_SUCCESS if successful or a non-zero error code.
  */
+
+#ifdef CONFIG_INPUT_BMA250_NG
 static int bma250_resume(void *mlsl_handle,
 			 struct ext_slave_descr *slave,
 			 struct ext_slave_platform_data *pdata)
@@ -464,6 +467,7 @@ static int bma250_resume(void *mlsl_handle,
 	}
 	return result;
 }
+#endif //FIX BUILD CRASH
 
 /**
  *  @brief read the sensor data from the device.
@@ -498,8 +502,10 @@ static int bma250_read(void *mlsl_handle,
 static struct ext_slave_descr bma250_descr = {
 	.init             = bma250_init,
 	.exit             = bma250_exit,
+#ifdef CONFIG_INPUT_BMA250_NG
 	.suspend          = bma250_suspend,
 	.resume           = bma250_resume,
+#endif //FIX BUILD CRASH
 	.read             = bma250_read,
 	.config           = bma250_config,
 	.get_config       = bma250_get_config,
