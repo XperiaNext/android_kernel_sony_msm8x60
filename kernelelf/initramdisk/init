@@ -20,6 +20,17 @@
 #
 # IRC: Sage @ #mer & #nemomobile @ Freenode
 
+echo "
+##########################################################
+#                                                        #
+#     WELCOME TO LINUX LOADER ON THE XPERIA ACRO S       #
+#                        v0.1                            #
+#                                                        #
+#             Paul Rich (BPaul), May 18th 2013           #
+#                                                        #
+##########################################################
+"
+
 echo "Creating directories..."
 mkdir -p /proc
 mkdir -p /sys
@@ -32,53 +43,17 @@ mount -t proc proc /proc
 mount -t sysfs sys /sys
 mount -t devtmpfs devtmpfs /dev
 
-fail() {
-    echo "Failed"
-    echo "$1"
-    exec /bin/sh
-}
-
-echo "Starting ramdisk.."
-echo "Waiting 3 seconds for a key press (volume up/down or power) to enable ramdisk shell.."
-
-# /dev/input/event2
-# 114 Volume down
-# 115 Volume up
-# 116 Power
-
-key=`/sbin/evkey -u -t 3000 /dev/input/event0`
-
-if [ "x${key}" != "x" ]; then
-    echo "Key with code ${key} pressed, dropping to /bin/sh inside ramdisk."
-    exec /bin/sh
-fi
-
-NET_IF="usb0"
-NET_IP="192.168.2.15"
-
-/sbin/ifconfig ${NET_IF}
-if [ $? -eq 0 ]; then
-  echo "Found ${NET_IF}, trying to enable it and setup IP ${NET_IP}."
-  /sbin/ifconfig usb0 ${NET_IP} up
-  if [ $? -eq 0 ]; then
-    echo "Successfully enabled ${NET_IF} with ${NET_IP} sleeping 5 seconds."
-    sleep 5
-  else
-    echo "Failed to setup ${NET_IF} with ${NET_IP}.."
-  fi
-fi
-
 LOOP_DEV="/dev/loop0"
 SD_DEV="/dev/mmcblk0p15"
 SD_PART="/sdpart"
-NEMO="${SD_PART}/nemo.img"
+IMAGE="${SD_PART}/mer.img"
 ROOTFSMNTDIR="/mnt"
 
 echo "Mounting..."
 mount ${SD_DEV} ${SD_PART}
 
-echo "Booting Nemo Mobile..."
-losetup ${LOOP_DEV} ${NEMO}
+echo "Booting image..."
+losetup ${LOOP_DEV} ${IMAGE}
 mount ${LOOP_DEV} ${ROOTFSMNTDIR}
 
 INITBIN="/sbin/init"
