@@ -21,21 +21,20 @@
 # IRC: Sage @ #mer & #nemomobile @ Freenode
 
 echo "
-##########################################################
-#                                                        #
-#     WELCOME TO LINUX LOADER ON THE XPERIA ACRO S       #
-#                        v0.1                            #
-#                                                        #
-#             Paul Rich (BPaul), May 18th 2013           #
-#                                                        #
-##########################################################
+#######################################################################
+#                                                                     #
+#            WELCOME TO LINUX LOADER ON THE XPERIA ACRO S             #
+#                               v0.1                                  #
+#                                                                     #
+#                    Paul Rich (BPaul), May 18th 2013                 #
+#                                                                     #
+#######################################################################
 "
 
 echo "Creating directories..."
 mkdir -p /proc
 mkdir -p /sys
 mkdir -p /dev
-mkdir -p /sdpart
 mkdir -p /mnt
 
 echo "Mounting base..."
@@ -48,15 +47,15 @@ SD_DEV="/dev/mmcblk0p15"
 SD_PART="/sdpart"
 IMAGE="${SD_PART}/mer.img"
 ROOTFSMNTDIR="/mnt"
+INITBIN="/sbin/init"
 
 echo "Mounting..."
+mkdir -p ${SD_PART}
 mount ${SD_DEV} ${SD_PART}
 
 echo "Booting image..."
 losetup ${LOOP_DEV} ${IMAGE}
 mount ${LOOP_DEV} ${ROOTFSMNTDIR}
-
-INITBIN="/sbin/init"
 
 umount -l /dev
 umount -l /sys
