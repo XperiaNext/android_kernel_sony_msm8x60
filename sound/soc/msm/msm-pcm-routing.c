@@ -48,8 +48,13 @@ static struct mutex routing_lock;
 
 static int fm_switch_enable;
 
+#ifdef MSM_INCREASE_VOLUME
+#define INT_RX_VOL_MAX_STEPS 0x5000
+#define INT_RX_VOL_GAIN 0x5000
+#else
 #define INT_RX_VOL_MAX_STEPS 0x2000
 #define INT_RX_VOL_GAIN 0x2000
+#endif
 
 static int msm_route_fm_vol_control;
 static const DECLARE_TLV_DB_LINEAR(fm_rx_vol_gain, 0,

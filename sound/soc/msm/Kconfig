@@ -48,6 +48,13 @@ config SND_MVS_SOC
 	To support Mvs packet capture/playback
 
 #8660 Variants
+config MSM_INCREASE_VOLUME
+	tristate "Increase sound volume"
+	depends on SND_SOC_MSM8X60
+	default y
+	help
+	 Here increase sound volume
+
 config SND_SOC_MSM8X60_PCM
 	tristate
 
