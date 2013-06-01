@@ -67,3 +67,10 @@ config PROC_PAGE_MONITOR
 	  /proc/pid/smaps, /proc/pid/clear_refs, /proc/pid/pagemap,
 	  /proc/kpagecount, and /proc/kpageflags. Disabling these
           interfaces will reduce the size of the kernel by approximately 4kb.
+
+config PHABLET_PROC_FS
+	tristate "Ubuntu Touch proc fs"
+	depends on PROC_FS
+	default n
+	help
+	 Here needed if you build kernel for Ubuntu Touch
