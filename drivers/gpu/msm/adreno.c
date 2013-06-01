@@ -15,14 +15,8 @@
 #include <linux/vmalloc.h>
 #include <linux/ioctl.h>
 #include <linux/sched.h>
-//#include <linux/of.h>
-//#include <linux/of_device.h>
 
 #include <mach/socinfo.h>
-#include <mach/msm_bus_board.h>
-#include <mach/msm_bus.h>
-#include <mach/msm_dcvs.h>
-#include <mach/msm_dcvs_scm.h>
 
 #include "kgsl.h"
 #include "kgsl_pwrscale.h"
@@ -32,6 +26,8 @@
 
 #include "adreno.h"
 #include "adreno_pm4types.h"
+#include "adreno_debugfs.h"
+#include "adreno_postmortem.h"
 
 #include "a2xx_reg.h"
 #include "a3xx_reg.h"
@@ -182,9 +178,7 @@ static const struct {
 	{ ADRENO_REV_A320, 3, 2, 0, ANY_ID,
 		"a300_pm4.fw", "a300_pfp.fw", &adreno_a3xx_gpudev,
 		512, 0, 2, SZ_512K },
-	{ ADRENO_REV_A330, 3, 3, 0, 0,
-		"a330_pm4.fw", "a330_pfp.fw", &adreno_a3xx_gpudev,
-		512, 0, 2, SZ_1M },
+
 };
 
 static irqreturn_t adreno_irq_handler(struct kgsl_device *device)
@@ -287,8 +281,6 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 							&reg_map_array);
 
 	context = idr_find(&device->context_idr, context_id);
-	if (context == NULL)
-		return;
 	adreno_ctx = context->devctxt;
 
 	reg_map_desc = reg_map_array;
@@ -296,10 +288,6 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 	if (kgsl_mmu_enable_clk(&device->mmu,
 				KGSL_IOMMU_CONTEXT_USER))
 		goto done;
-
-	cmds += __adreno_add_idle_indirect_cmds(cmds,
-		device->mmu.setstate_memory.gpuaddr +
-		KGSL_IOMMU_SETSTATE_NOP_OFFSET);
 
 	if (cpu_is_msm8960())
 		cmds += adreno_add_change_mh_phys_limit_cmds(cmds, 0xFFFFF000,
@@ -351,9 +339,10 @@ static void adreno_iommu_setstate(struct kgsl_device *device,
 		*cmds++ = cp_type3_packet(CP_INVALIDATE_STATE, 1);
 		*cmds++ = 0x7fff;
 
-		cmds += __adreno_add_idle_indirect_cmds(cmds,
-			device->mmu.setstate_memory.gpuaddr +
-			KGSL_IOMMU_SETSTATE_NOP_OFFSET);
+		if (flags & KGSL_MMUFLAGS_TLBFLUSH)
+			cmds += __adreno_add_idle_indirect_cmds(cmds,
+				device->mmu.setstate_memory.gpuaddr +
+				KGSL_IOMMU_SETSTATE_NOP_OFFSET);
 	}
 	if (flags & KGSL_MMUFLAGS_TLBFLUSH) {
 		/*
@@ -446,8 +435,6 @@ static void adreno_gpummu_setstate(struct kgsl_device *device,
 	 */
 	if (!kgsl_cff_dump_enable && adreno_dev->drawctxt_active) {
 		context = idr_find(&device->context_idr, context_id);
-		if (context == NULL)
-			return;
 		adreno_ctx = context->devctxt;
 
 		if (flags & KGSL_MMUFLAGS_PTUPDATE) {
@@ -544,16 +531,53 @@ static void adreno_setstate(struct kgsl_device *device,
 static unsigned int
 a3xx_getchipid(struct kgsl_device *device)
 {
-	struct kgsl_device_platform_data *pdata =
-		kgsl_device_get_drvdata(device);
+	unsigned int majorid = 0, minorid = 0, patchid = 0;
 
 	/*
-	 * All current A3XX chipids are detected at the SOC level. Leave this
-	 * function here to support any future GPUs that have working
-	 * chip ID registers
+	 * We could detect the chipID from the hardware but it takes multiple
+	 * registers to find the right combination. Since we traffic exclusively
+	 * in system on chips, we can be (mostly) confident that a SOC version
+	 * will match a GPU (at this juncture at least).  So do the lazy/quick
+	 * thing and set the chip_id based on the SoC
 	 */
 
-	return pdata->chipid;
+	unsigned int version = socinfo_get_version();
+
+	if (cpu_is_apq8064()) {
+
+		/* A320 */
+		majorid = 2;
+		minorid = 0;
+
+		/*
+		 * V1.1 has some GPU work arounds that we need to communicate
+		 * up to user space via the patchid
+		 */
+
+		if ((SOCINFO_VERSION_MAJOR(version) == 1) &&
+			(SOCINFO_VERSION_MINOR(version) == 1))
+			patchid = 1;
+		else
+			patchid = 0;
+	} else if (cpu_is_msm8930() || cpu_is_msm8930aa() || cpu_is_msm8627()) {
+
+		/* A305 */
+		majorid = 0;
+		minorid = 5;
+
+		/*
+		 * V1.2 has some GPU work arounds that we need to communicate
+		 * up to user space via the patchid
+		 */
+
+		if ((SOCINFO_VERSION_MAJOR(version) == 1) &&
+			(SOCINFO_VERSION_MINOR(version) == 2))
+			patchid = 2;
+		else
+			patchid = 0;
+	}
+
+	return (0x03 << 24) | (majorid << 16) | (minorid << 8) | patchid;
 }
 
 static unsigned int
@@ -561,13 +585,7 @@ a2xx_getchipid(struct kgsl_device *device)
 {
 	unsigned int chipid = 0;
 	unsigned int coreid, majorid, minorid, patchid, revid;
-	struct kgsl_device_platform_data *pdata =
-		kgsl_device_get_drvdata(device);
-
-	/* If the chip id is set at the platform level, then just use that */
-
-	if (pdata->chipid != 0)
-		return pdata->chipid;
+	uint32_t soc_platform_version = socinfo_get_version();
 
 	adreno_regread(device, REG_RBBM_PERIPHID1, &coreid);
 	adreno_regread(device, REG_RBBM_PERIPHID2, &majorid);
@@ -577,7 +595,7 @@ a2xx_getchipid(struct kgsl_device *device)
 	* adreno 22x gpus are indicated by coreid 2,
 	* but REG_RBBM_PERIPHID1 always contains 0 for this field
 	*/
-	if (cpu_is_msm8x60())
+	if (cpu_is_msm8960() || cpu_is_msm8x60())
 		chipid = 2 << 24;
 	else
 		chipid = (coreid & 0xF) << 24;
@@ -589,9 +607,15 @@ a2xx_getchipid(struct kgsl_device *device)
 	patchid = ((revid >> 16) & 0xFF);
 
 	/* 8x50 returns 0 for patch release, but it should be 1 */
+	/* 8960v3 returns 5 for patch release, but it should be 6 */
 	/* 8x25 returns 0 for minor id, but it should be 1 */
 	if (cpu_is_qsd8x50())
 		patchid = 1;
+	else if (cpu_is_msm8960() &&
+			SOCINFO_VERSION_MAJOR(soc_platform_version) == 3)
+		patchid = 6;
+	else if (cpu_is_msm8625() && minorid == 0)
+		minorid = 1;
 
 	chipid |= (minorid << 8) | patchid;
 
@@ -601,18 +625,11 @@ a2xx_getchipid(struct kgsl_device *device)
 static unsigned int
 adreno_getchipid(struct kgsl_device *device)
 {
-	struct kgsl_device_platform_data *pdata =
-		kgsl_device_get_drvdata(device);
-
-	/*
-	 * All A3XX chipsets will have pdata set, so assume !pdata->chipid is
-	 * an A2XX processor
-	 */
-
-	if (pdata->chipid == 0 || ADRENO_CHIPID_MAJOR(pdata->chipid) == 2)
-		return a2xx_getchipid(device);
-	else
+	if (cpu_is_apq8064() || cpu_is_msm8930() || cpu_is_msm8930aa() ||
+	    cpu_is_msm8627())
 		return a3xx_getchipid(device);
+	else
+		return a2xx_getchipid(device);
 }
 
 static inline bool _rev_match(unsigned int id, unsigned int entry)
@@ -627,10 +644,10 @@ adreno_identify_gpu(struct adreno_device *adreno_dev)
 
 	adreno_dev->chip_id = adreno_getchipid(&adreno_dev->dev);
 
-	core = ADRENO_CHIPID_CORE(adreno_dev->chip_id);
-	major = ADRENO_CHIPID_MAJOR(adreno_dev->chip_id);
-	minor = ADRENO_CHIPID_MINOR(adreno_dev->chip_id);
-	patchid = ADRENO_CHIPID_PATCH(adreno_dev->chip_id);
+	core = (adreno_dev->chip_id >> 24) & 0xff;
+	major = (adreno_dev->chip_id >> 16) & 0xff;
+	minor = (adreno_dev->chip_id >> 8) & 0xff;
+	patchid = (adreno_dev->chip_id & 0xff);
 
 	for (i = 0; i < ARRAY_SIZE(adreno_gpulist); i++) {
 		if (core == adreno_gpulist[i].core &&
@@ -655,83 +672,12 @@ adreno_identify_gpu(struct adreno_device *adreno_dev)
 	adreno_dev->gmem_size = adreno_gpulist[i].gmem_size;
 }
 
-static struct platform_device_id adreno_id_table[] = {
-	{ DEVICE_3D0_NAME, (kernel_ulong_t)&device_3d0.dev, },
-	{},
-};
-
-MODULE_DEVICE_TABLE(platform, adreno_id_table);
-
-
-#ifdef CONFIG_MSM_OCMEM
-static int
-adreno_ocmem_gmem_malloc(struct adreno_device *adreno_dev)
-{
-	if (adreno_dev->gpurev != ADRENO_REV_A330)
-		return 0;
-
-	/* OCMEM is only needed once, do not support consective allocation */
-	if (adreno_dev->ocmem_hdl != NULL)
-		return 0;
-
-	adreno_dev->ocmem_hdl =
-		ocmem_allocate(OCMEM_GRAPHICS, adreno_dev->gmem_size);
-	if (adreno_dev->ocmem_hdl == NULL)
-		return -ENOMEM;
-
-	adreno_dev->gmem_size = adreno_dev->ocmem_hdl->len;
-	adreno_dev->gmem_base = adreno_dev->ocmem_hdl->addr;
-
-	return 0;
-}
-
-static void
-adreno_ocmem_gmem_free(struct adreno_device *adreno_dev)
-{
-	if (adreno_dev->gpurev != ADRENO_REV_A330)
-		return;
-
-	if (adreno_dev->ocmem_hdl == NULL)
-		return;
-
-	ocmem_free(OCMEM_GRAPHICS, adreno_dev->ocmem_hdl);
-	adreno_dev->ocmem_hdl = NULL;
-}
-#else
-static int
-adreno_ocmem_gmem_malloc(struct adreno_device *adreno_dev)
-{
-	return 0;
-}
-
-static void
-adreno_ocmem_gmem_free(struct adreno_device *adreno_dev)
-{
-}
-#endif
-
 static int __devinit
 adreno_probe(struct platform_device *pdev)
 {
 	struct kgsl_device *device;
 	struct adreno_device *adreno_dev;
 	int status = -EINVAL;
-	bool is_dt;
-
-#if 0
-	is_dt = of_match_device(adreno_match_table, &pdev->dev);
-
-	if (is_dt && pdev->dev.of_node) {
-		status = adreno_of_get_pdata(pdev);
-		if (status)
-			goto error_return;
-	}
-#else
-	if(0) {
-	  is_dt = false;
-	  goto error_return;
-	}
-#endif
 
 	device = (struct kgsl_device *)pdev->id_entry->driver_data;
 	adreno_dev = ADRENO_DEVICE(device);
@@ -757,7 +703,6 @@ error_close_rb:
 	adreno_ringbuffer_close(&adreno_dev->ringbuffer);
 error:
 	device->parentdev = NULL;
-error_return:
 	return status;
 }
 
@@ -820,12 +765,6 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	if (status)
 		goto error_clk_off;
 
-	status = adreno_ocmem_gmem_malloc(adreno_dev);
-	if (status) {
-		KGSL_DRV_ERR(device, "OCMEM malloc failed\n");
-		goto error_mmu_off;
-	}
-
 	/* Start the GPU */
 	adreno_dev->gpudev->start(adreno_dev);
 
@@ -842,10 +781,7 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	}
 
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
-
-error_mmu_off:
 	kgsl_mmu_stop(&device->mmu);
-
 error_clk_off:
 	kgsl_pwrctrl_disable(device);
 
@@ -865,8 +801,6 @@ static int adreno_stop(struct kgsl_device *device)
 	device->ftbl->irqctrl(device, 0);
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	del_timer_sync(&device->idle_timer);
-
-	adreno_ocmem_gmem_free(adreno_dev);
 
 	/* Power down the device */
 	kgsl_pwrctrl_disable(device);
@@ -1202,7 +1136,7 @@ adreno_dump_and_recover(struct kgsl_device *device)
 		 * Trigger an automatic dump of the state to
 		 * the console
 		 */
-		kgsl_postmortem_dump(device, 0);
+		adreno_postmortem_dump(device, 0);
 
 		/*
 		 * Make a GPU snapshot.  For now, do it after the PM dump so we
@@ -1272,7 +1206,7 @@ static int adreno_getproperty(struct kgsl_device *device,
 				/*NOTE: with mmu enabled, gpuaddr doesn't mean
 				 * anything to mmap().
 				 */
-				shadowprop.gpuaddr = device->memstore.gpuaddr;
+				shadowprop.gpuaddr = device->memstore.physaddr;
 				shadowprop.size = device->memstore.size;
 				/* GSL needs this to be set, even if it
 				   appears to be meaningless */
@@ -1694,8 +1628,9 @@ static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
 			cmds[1] = 0;
 
 			if (adreno_dev->drawctxt_active)
-				adreno_ringbuffer_issuecmds_intr(device,
-						context, &cmds[0], 2);
+				adreno_ringbuffer_issuecmds(device,
+					adreno_dev->drawctxt_active,
+					KGSL_CMD_FLAGS_NONE, &cmds[0], 2);
 			else
 				/* We would never call this function if there
 				 * was no active contexts running */
@@ -2035,8 +1970,13 @@ static const struct kgsl_functable adreno_functable = {
 	.drawctxt_create = adreno_drawctxt_create,
 	.drawctxt_destroy = adreno_drawctxt_destroy,
 	.setproperty = adreno_setproperty,
-	.postmortem_dump = adreno_dump,
 };
+
+static struct platform_device_id adreno_id_table[] = {
+	{ DEVICE_3D0_NAME, (kernel_ulong_t)&device_3d0.dev, },
+	{ },
+};
+MODULE_DEVICE_TABLE(platform, adreno_id_table);
 
 static struct platform_driver adreno_platform_driver = {
 	.probe = adreno_probe,
@@ -2048,7 +1988,6 @@ static struct platform_driver adreno_platform_driver = {
 		.owner = THIS_MODULE,
 		.name = DEVICE_3D_NAME,
 		.pm = &kgsl_pm_ops,
-		.of_match_table = NULL
 	}
 };
 

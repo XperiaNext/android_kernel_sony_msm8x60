@@ -14,7 +14,7 @@
 #define __KGSL_DEVICE_H
 
 #include <linux/idr.h>
-#include <linux/pm_qos_params.h>
+#include <linux/pm_qos.h>
 #include <linux/earlysuspend.h>
 
 #include "kgsl.h"
@@ -22,7 +22,6 @@
 #include "kgsl_pwrctrl.h"
 #include "kgsl_log.h"
 #include "kgsl_pwrscale.h"
-#include <linux/sync.h>
 
 #define KGSL_TIMEOUT_NONE       0
 #define KGSL_TIMEOUT_DEFAULT    0xFFFFFFFF
@@ -111,7 +110,6 @@ struct kgsl_functable {
 	int (*setproperty) (struct kgsl_device *device,
 		enum kgsl_property_type type, void *value,
 		unsigned int sizebytes);
-	int (*postmortem_dump) (struct kgsl_device *device, int manual);
 };
 
 /* MH register values */
@@ -194,14 +192,10 @@ struct kgsl_device {
 	int pwr_log;
 	struct kgsl_pwrscale pwrscale;
 	struct kobject pwrscale_kobj;
-	struct pm_qos_request_list pm_qos_req_dma;
+	struct pm_qos_request pm_qos_req_dma;
 	struct work_struct ts_expired_ws;
 	struct list_head events;
 	s64 on_time;
-
-	/* Postmortem Control switches */
-	int pm_regs_enabled;
-	int pm_ib_enabled;
 };
 
 void kgsl_timestamp_expired(struct work_struct *work);
@@ -237,12 +231,6 @@ struct kgsl_context {
 	 * context was responsible for causing it
 	 */
 	unsigned int reset_status;
-
-	/*
-	 * Timeline used to create fences that can be signaled when a
-	 * sync_pt timestamp expires.
-	 */
-	struct sync_timeline *timeline;
 };
 
 struct kgsl_process_private {

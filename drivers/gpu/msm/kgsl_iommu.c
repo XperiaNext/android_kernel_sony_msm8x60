@@ -312,7 +312,8 @@ void *kgsl_iommu_create_pagetable(void)
 				sizeof(struct kgsl_iommu_pt));
 		return NULL;
 	}
-	iommu_pt->domain = iommu_domain_alloc(MSM_IOMMU_DOMAIN_PT_CACHEABLE);
+	iommu_pt->domain = iommu_domain_alloc(&platform_bus_type,
+										  MSM_IOMMU_DOMAIN_PT_CACHEABLE);
 	if (!iommu_pt->domain) {
 		KGSL_CORE_ERR("Failed to create iommu domain\n");
 		kfree(iommu_pt);
@@ -879,6 +880,7 @@ static void kgsl_iommu_stop(struct kgsl_mmu *mmu)
 	 */
 
 	if (mmu->flags & KGSL_FLAGS_STARTED) {
+		kgsl_regwrite(mmu->device, MH_MMU_CONFIG, 0x00000000);
 		/* detach iommu attachment */
 		kgsl_detach_pagetable_iommu_domain(mmu);
 		mmu->hwpagetable = NULL;
