@@ -1,0 +1,8 @@
+keywords.c
+lex.c
+parse.[ch]
+genksyms
+*hash.c
+*lex.c
+*tab.c
+*tab.h
