@@ -60,9 +60,6 @@ struct mdp4_overlay_ctrl {
 	uint32 mixer0_played;
 	uint32 mixer1_played;
 	uint32 mixer2_played;
-	uint32 sec_mapped;
-	uint32 mmu_clk_on;
-	uint32 sec_active;
 } mdp4_overlay_db = {
 	.cs_controller = CS_CONTROLLER_0,
 	.plist = {
@@ -126,43 +123,6 @@ struct mdp4_overlay_perf perf_current = {
 
 static struct ion_client *display_iclient;
 
-static int mdp4_map_sec_resource(void)
-{
-	int ret = 0;
-	if (ctrl->sec_mapped)
-		return 0;
-
-	ret = mdp_enable_iommu_clocks();
-	if (ret) {
-		pr_err("IOMMU clock enabled failed while open");
-		return ret;
-	}
-	ret = msm_ion_secure_heap(ION_HEAP(ION_CP_MM_HEAP_ID));
-	if (ret)
-		pr_err("ION heap secure failed heap id %d ret %d\n",
-			   ION_CP_MM_HEAP_ID, ret);
-	else
-		ctrl->sec_mapped = 1;
-	mdp_disable_iommu_clocks();
-	return ret;
-}
-
-int mdp4_unmap_sec_resource(void)
-{
-	int ret = 0;
-	if ((ctrl->sec_mapped == 0) || (ctrl->sec_active))
-		return 0;
-
-	ret = mdp_enable_iommu_clocks();
-	if (ret) {
-		pr_err("IOMMU clock enabled failed while close\n");
-		return ret;
-	}
-	msm_ion_unsecure_heap(ION_HEAP(ION_CP_MM_HEAP_ID));
-	ctrl->sec_mapped = 0;
-	mdp_disable_iommu_clocks();
-	return ret;
-}
 
 /*
  * mdp4_overlay_iommu_unmap_freelist()
@@ -280,7 +240,8 @@ int mdp4_overlay_iommu_map_buf(int mem_id,
 		pr_err("ion_import_dma_buf() failed\n");
 		return PTR_ERR(*srcp_ihdl);
 	}
-	pr_debug("%s(): ion_hdl %p, ion_buf %d\n", __func__, *srcp_ihdl, mem_id);
+	pr_debug("%s(): ion_hdl %p, ion_buf %d\n", __func__, *srcp_ihdl,
+		ion_share_dma_buf(display_iclient, *srcp_ihdl));
 	pr_debug("mixer %u, pipe %u, plane %u\n", pipe->mixer_num,
 		pipe->pipe_ndx, plane);
 	if (ion_map_iommu(display_iclient, *srcp_ihdl,
@@ -3118,12 +3079,6 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		}
 	}
 
-
-	if (pipe->flags & MDP_SECURE_OVERLAY_SESSION) {
-		mdp4_map_sec_resource();
-		ctrl->sec_active = TRUE;
-	}
-
 	mdp4_overlay_mdp_pipe_req(pipe, mfd);
 
 	mutex_unlock(&mfd->dma->ov_mutex);
@@ -3219,9 +3174,6 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 	}
 
 	mdp4_stat.overlay_unset[pipe->mixer_num]++;
-
-	if (pipe->flags & MDP_SECURE_OVERLAY_SESSION)
-		ctrl->sec_active = FALSE;
 
 	mdp4_overlay_pipe_free(pipe);
 
@@ -3545,10 +3497,9 @@ end:
 	return ret;
 }
 
-int mdp4_overlay_commit(struct fb_info *info)
+int mdp4_overlay_commit(struct fb_info *info, int mixer)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-	int mixer;
 
 	if (mfd == NULL)
 		return -ENODEV;
@@ -3556,16 +3507,12 @@ int mdp4_overlay_commit(struct fb_info *info)
 	if (!mfd->panel_power_on) /* suspended */
 		return -EINVAL;
 
-	mixer = mfd->panel_info.pdest;	/* DISPLAY_1 or DISPLAY_2 */
-
 	if (mixer >= MDP4_MIXER_MAX)
 		return -EPERM;
 
 	mutex_lock(&mfd->dma->ov_mutex);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
-
-	msm_fb_wait_for_fence(mfd);
 
 	if (mixer == MDP4_MIXER0) {
 		if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD) {
@@ -3582,11 +3529,9 @@ int mdp4_overlay_commit(struct fb_info *info)
 		if (ctrl->panel_mode & MDP4_PANEL_DTV)
 			mdp4_dtv_pipe_commit(0, 1);
 	}
-	msm_fb_signal_timeline(mfd);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 
-	mdp4_unmap_sec_resource();
 	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;
