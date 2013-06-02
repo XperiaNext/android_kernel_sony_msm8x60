@@ -1809,7 +1809,6 @@ int msm_fb_signal_timeline(struct msm_fb_data_type *mfd)
 }
 
 DEFINE_SEMAPHORE(msm_fb_pan_sem);
-
 static void bl_workqueue_handler(struct work_struct *work)
 {
 	struct msm_fb_data_type *mfd = container_of(to_delayed_work(work),
@@ -1834,7 +1833,6 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	struct msm_fb_panel_data *pdata =
 		(struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
-	int i, ret;
 
 	/*
 	 * If framebuffer is 2, io pen display is not allowed.
@@ -1908,17 +1906,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 
 	down(&msm_fb_pan_sem);
 
-	/* buf sync */
-	for (i = 0; i < mfd->acq_fen_cnt; i++) {
-		ret = sync_fence_wait(mfd->acq_fen[i], WAIT_FENCE_TIMEOUT);
-		sync_fence_put(mfd->acq_fen[i]);
-		if (ret < 0) {
-			pr_err("%s: sync_fence_wait failed! ret = %x\n",
-				__func__, ret);
-			break;
-		}
-	}
-	mfd->acq_fen_cnt = 0;
+	msm_fb_wait_for_fence(mfd);
 
 	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
 		mdp_set_dma_pan_info(info, NULL, TRUE);
@@ -1947,12 +1935,6 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 
 	msm_fb_signal_timeline(mfd);
 
-	if (mfd->timeline) {
-		sw_sync_timeline_inc(mfd->timeline, 1);
-		mfd->timeline_value++;
-	}
-	mfd->last_rel_fence = mfd->cur_rel_fence;
-	mfd->cur_rel_fence = 0;
 	up(&msm_fb_pan_sem);
 
 	if (pdata && pdata->power_on_panel_at_pan) {
