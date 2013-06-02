@@ -1856,7 +1856,7 @@ static void bl_workqueue_handler(struct work_struct *work)
 	}
 }
 
-+static int msm_fb_pan_idle(struct msm_fb_data_type *mfd)
+static int msm_fb_pan_idle(struct msm_fb_data_type *mfd)
 {
 	int ret = 0;
 
