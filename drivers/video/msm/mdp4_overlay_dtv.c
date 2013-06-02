@@ -586,10 +586,8 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	int ret = 0;
 	int cndx = 0;
-	int undx;
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
-	struct vsync_update *vp;
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
@@ -1066,5 +1064,6 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 	mdp4_dtv_pipe_commit(cndx, 0);
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
+	mdp4_dtv_pipe_commit(0, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 }

@@ -1024,6 +1024,7 @@ int mdp4_dsi_cmd_off(struct platform_device *pdev)
 	struct vsync_update *vp;
 	int undx;
 	int need_wait, cnt;
+	long long tick;
 
 	pr_debug("%s+: pid=%d\n", __func__, current->pid);
 
@@ -1169,6 +1170,9 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd)
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
 	mutex_lock(&mfd->dma->ov_mutex);
+
+	mdp4_dsi_cmd_wait4vsync(0, &tick);
+
 	mdp4_dsi_cmd_pipe_commit(cndx, 0);
 	if (need_dmap_wait)
 		mdp4_dsi_cmd_wait4dmap(0);
