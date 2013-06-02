@@ -1745,6 +1745,34 @@ static int msm_fb_release(struct fb_info *info, int user)
 	return ret;
 }
 
+int msm_fb_wait_for_fence(struct msm_fb_data_type *mfd)
+{
+	int i, ret = 0;
+	/* buf sync */
+	for (i = 0; i < mfd->acq_fen_cnt; i++) {
+		ret = sync_fence_wait(mfd->acq_fen[i], WAIT_FENCE_TIMEOUT);
+		sync_fence_put(mfd->acq_fen[i]);
+		if (ret < 0) {
+			pr_err("%s: sync_fence_wait failed! ret = %x\n",
+				__func__, ret);
+			break;
+		}
+	}
+	mfd->acq_fen_cnt = 0;
+	return ret;
+}
+
+int msm_fb_signal_timeline(struct msm_fb_data_type *mfd)
+{
+	if (mfd->timeline) {
+		sw_sync_timeline_inc(mfd->timeline, 1);
+		mfd->timeline_value++;
+	}
+	mfd->last_rel_fence = mfd->cur_rel_fence;
+	mfd->cur_rel_fence = 0;
+	return 0;
+}
+
 DEFINE_SEMAPHORE(msm_fb_pan_sem);
 
 static void bl_workqueue_handler(struct work_struct *work)
@@ -1775,6 +1803,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	/*
 	 * If framebuffer is 2, io pen display is not allowed.
 	 */
+	msm_fb_wait_for_fence(mfd);
 	if (bf_supported && info->node == 2) {
 		pr_err("%s: no pan display for fb%d!",
 		       __func__, info->node);
@@ -1864,6 +1893,7 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 	if (mdp4_unmap_sec_resource())
 		pr_err("%s: unmap secure res failed\n", __func__);
 
+	msm_fb_signal_timeline(mfd);
 	up(&msm_fb_pan_sem);
 
 	if (pdata && pdata->power_on_panel_at_pan) {
