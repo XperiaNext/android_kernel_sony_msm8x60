@@ -3128,15 +3128,15 @@ struct msm_iommu_domain_name msm8660_iommu_ctx_names[] = {
 		.name = "jpegd_dst",
 		.domain = CAMERA_DOMAIN,
 	},
-	/* Rotator src*/
+	/* Rotator */
 	{
 		.name = "rot_src",
 		.domain = ROTATOR_SRC_DOMAIN,
 	},
-	/* Rotator dst */
+	/* Rotator */
 	{
 		.name = "rot_dst",
-		.domain = ROTATOR_DST_DOMAIN,
+		.domain = ROTATOR_SRC_DOMAIN,
 	},
 	/* Video */
 	{
@@ -3192,36 +3192,23 @@ static struct mem_pool msm8660_camera_pools[] =  {
 		},
 };
 
-static struct mem_pool msm8660_display_read_pools[] =  {
+static struct mem_pool msm8660_display_pools[] =  {
 	[GEN_POOL] =
-	/* One address space for display reads */
+	/* One address space for display */
 		{
 			.paddr	= SZ_128K,
 			.size	= SZ_2G - SZ_128K,
 		},
 };
 
-static struct mem_pool msm8660_display_write_pools[] =  {
+static struct mem_pool msm8660_rotator_pools[] =  {
 	[GEN_POOL] =
-	/* One address space for display writes */
+	/* One address space for rotator */
 		{
 			.paddr	= SZ_128K,
 			.size	= SZ_2G - SZ_128K,
 		},
 };
-
-static struct mem_pool msm8660_rotator_src_pools[] =  {
-	[GEN_POOL] =
-	/* One address space for rotator src */
-		{
-			.paddr	= SZ_128K,
-			.size	= SZ_2G - SZ_128K,
-		},
-};
-
-static struct mem_pool msm8660_rotator_dst_pools[] =  {
-	[GEN_POOL] =
-	/* One address space for rotator dst */
 
 static struct msm_iommu_domain msm8660_iommu_domains[] = {
 		[VIDEO_DOMAIN] = {
@@ -3236,16 +3223,9 @@ static struct msm_iommu_domain msm8660_iommu_domains[] = {
 			.iova_pools = msm8660_display_pools,
 			.npools = ARRAY_SIZE(msm8660_display_pools),
 		},
-		[DISPLAY_WRITE_DOMAIN] = {
-			.iova_pools = msm8660_display_write_pools,
-			.npools = ARRAY_SIZE(msm8660_display_write_pools),
 		[ROTATOR_SRC_DOMAIN] = {
-			.iova_pools = msm8660_rotator_src_pools,
-			.npools = ARRAY_SIZE(msm8660_rotator_src_pools),
-		},
-		[ROTATOR_DST_DOMAIN] = {
-			.iova_pools = msm8660_rotator_dst_pools,
-			.npools = ARRAY_SIZE(msm8660_rotator_dst_pools),
+			.iova_pools = msm8660_rotator_pools,
+			.npools = ARRAY_SIZE(msm8660_rotator_pools),
 		},
 };
 
