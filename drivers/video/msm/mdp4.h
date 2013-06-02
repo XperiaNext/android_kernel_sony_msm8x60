@@ -551,10 +551,10 @@ void mdp4_dsi_cmd_overlay(struct msm_fb_data_type *mfd);
 int mdp4_lcdc_pipe_commit(int cndx, int wait);
 int mdp4_dtv_pipe_commit(int cndx, int wait);
 int mdp4_dsi_cmd_update_cnt(int cndx);
-void mdp4_dsi_rdptr_init(int cndx);
-void mdp4_dsi_vsync_init(int cndx);
-void mdp4_lcdc_vsync_init(int cndx);
-void mdp4_dtv_vsync_init(int cndx);
+void mdp4_dsi_rdptr_init(int cndx, struct msm_fb_data_type *mfd);
+void mdp4_dsi_vsync_init(int cndx, struct msm_fb_data_type *mfd);
+void mdp4_lcdc_vsync_init(int cndx, struct msm_fb_data_type *mfd);
+void mdp4_dtv_vsync_init(int cndx, struct msm_fb_data_type *mfd);
 ssize_t mdp4_dsi_cmd_show_event(struct device *dev,
 	struct device_attribute *attr, char *buf);
 ssize_t mdp4_dsi_video_show_event(struct device *dev,

@@ -138,7 +138,7 @@ struct msm_fb_data_type {
 	int (*start_histogram) (struct mdp_histogram_start_req *req);
 	int (*stop_histogram) (struct fb_info *info, uint32_t block);
 	void (*vsync_ctrl) (int enable);
-	void (*vsync_init) (int cndx);
+	void (*vsync_init) (int cndx, struct msm_fb_data_type *mfd);
 	void *vsync_show;
 	void *cursor_buf;
 	void *cursor_buf_phys;
