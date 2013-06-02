@@ -604,8 +604,10 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	struct msm_fb_data_type *mfd;
 	int ret = 0;
 	int cndx = 0;
+	int undx;
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
+	struct vsync_update *vp;
 
 	mfd = (struct msm_fb_data_type *)platform_get_drvdata(pdev);
 
@@ -631,10 +633,6 @@ int mdp4_dtv_off(struct platform_device *pdev)
 			if (pipe->pipe_type == OVERLAY_TYPE_BF)
 				mdp4_overlay_borderfill_stage_down(pipe);
 
-			/* base pipe may change after borderfill_stage_down */
-			pipe = vctrl->base_pipe;
-			mdp4_mixer_stage_down(pipe, 1);
-			mdp4_overlay_pipe_free(pipe);
 			/* pipe == rgb2 */
 			vctrl->base_pipe = NULL;
 		} else {
@@ -645,11 +643,6 @@ int mdp4_dtv_off(struct platform_device *pdev)
 	}
 
 	mdp4_overlay_panel_mode_unset(MDP4_MIXER1, MDP4_PANEL_DTV);
-
-	if (vctrl->vsync_irq_enabled) {
-		vctrl->vsync_irq_enabled = 0;
-		vsync_irq_disable(INTR_PRIMARY_VSYNC, MDP_PRIM_VSYNC_TERM);
-	}
 
 	undx =  vctrl->update_ndx;
 	vp = &vctrl->vlist[undx];
