@@ -60,6 +60,9 @@ struct mdp4_overlay_ctrl {
 	uint32 mixer0_played;
 	uint32 mixer1_played;
 	uint32 mixer2_played;
+	uint32 sec_mapped;
+	uint32 mmu_clk_on;
+	uint32 sec_active;
 } mdp4_overlay_db = {
 	.cs_controller = CS_CONTROLLER_0,
 	.plist = {
@@ -123,6 +126,43 @@ struct mdp4_overlay_perf perf_current = {
 
 static struct ion_client *display_iclient;
 
+static int mdp4_map_sec_resource(void)
+{
+	int ret = 0;
+	if (ctrl->sec_mapped)
+		return 0;
+
+	ret = mdp_enable_iommu_clocks();
+	if (ret) {
+		pr_err("IOMMU clock enabled failed while open");
+		return ret;
+	}
+	ret = msm_ion_secure_heap(ION_HEAP(ION_CP_MM_HEAP_ID));
+	if (ret)
+		pr_err("ION heap secure failed heap id %d ret %d\n",
+			   ION_CP_MM_HEAP_ID, ret);
+	else
+		ctrl->sec_mapped = 1;
+	mdp_disable_iommu_clocks();
+	return ret;
+}
+
+int mdp4_unmap_sec_resource(void)
+{
+	int ret = 0;
+	if ((ctrl->sec_mapped == 0) || (ctrl->sec_active))
+		return 0;
+
+	ret = mdp_enable_iommu_clocks();
+	if (ret) {
+		pr_err("IOMMU clock enabled failed while close\n");
+		return ret;
+	}
+	msm_ion_unsecure_heap(ION_HEAP(ION_CP_MM_HEAP_ID));
+	ctrl->sec_mapped = 0;
+	mdp_disable_iommu_clocks();
+	return ret;
+}
 
 /*
  * mdp4_overlay_iommu_unmap_freelist()
@@ -3079,6 +3119,12 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 		}
 	}
 
+
+	if (pipe->flags & MDP_SECURE_OVERLAY_SESSION) {
+		mdp4_map_sec_resource();
+		ctrl->sec_active = TRUE;
+	}
+
 	mdp4_overlay_mdp_pipe_req(pipe, mfd);
 
 	mutex_unlock(&mfd->dma->ov_mutex);
@@ -3174,6 +3220,9 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 	}
 
 	mdp4_stat.overlay_unset[pipe->mixer_num]++;
+
+	if (pipe->flags & MDP_SECURE_OVERLAY_SESSION)
+		ctrl->sec_active = FALSE;
 
 	mdp4_overlay_pipe_free(pipe);
 
@@ -3514,6 +3563,8 @@ int mdp4_overlay_commit(struct fb_info *info, int mixer)
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
 
+	msm_fb_wait_for_fence(mfd);
+
 	if (mixer == MDP4_MIXER0) {
 		if (ctrl->panel_mode & MDP4_PANEL_DSI_CMD) {
 			/* cndx = 0 */
@@ -3529,9 +3580,11 @@ int mdp4_overlay_commit(struct fb_info *info, int mixer)
 		if (ctrl->panel_mode & MDP4_PANEL_DTV)
 			mdp4_dtv_pipe_commit(0, 1);
 	}
+	msm_fb_signal_timeline(mfd);
 
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 
+	mdp4_unmap_sec_resource();
 	mutex_unlock(&mfd->dma->ov_mutex);
 
 	return 0;

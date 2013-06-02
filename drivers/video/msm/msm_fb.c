@@ -1860,6 +1860,10 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 				     (var->activate == FB_ACTIVATE_VBL));
 	}
 	mdp_dma_pan_update(info);
+
+	if (mdp4_unmap_sec_resource())
+		pr_err("%s: unmap secure res failed\n", __func__);
+
 	up(&msm_fb_pan_sem);
 
 	if (pdata && pdata->power_on_panel_at_pan) {
