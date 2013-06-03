@@ -285,6 +285,10 @@ struct mdp_qseed_cfg {
 };
 
 struct mdp_qseed_cfg_data {
+	uint32_t table_num;
+	uint32_t ops;
+	uint32_t len;
+	uint32_t *data;
 	uint32_t block;
 	struct mdp_qseed_cfg qseed_data;
 };
