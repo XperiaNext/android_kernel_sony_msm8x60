@@ -4446,6 +4446,7 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 	return 0;
 }
 
+#ifndef CONFIG_ARCH_MSM8X60
 void mhl_connect_api(boolean on)
 {
 	char *envp[2];
@@ -4488,6 +4489,7 @@ void mhl_connect_api(boolean on)
 	}
 }
 EXPORT_SYMBOL(mhl_connect_api);
+#endif
 
 /* Note that power-off will also be called when the cable-remove event is
  * processed on the user-space and as a result the framebuffer is powered
