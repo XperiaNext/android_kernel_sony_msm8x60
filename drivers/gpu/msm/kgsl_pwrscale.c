@@ -237,16 +237,21 @@ EXPORT_SYMBOL(kgsl_pwrscale_wake);
 void kgsl_pwrscale_busy(struct kgsl_device *device)
 {
 	if (PWRSCALE_ACTIVE(device) && device->pwrscale.policy->busy)
-		device->pwrscale.policy->busy(device,
-				&device->pwrscale);
+		if ((!device->pwrscale.gpu_busy) &&
+			(device->requested_state != KGSL_STATE_SLUMBER))
+			device->pwrscale.policy->busy(device,
+					&device->pwrscale);
+	device->pwrscale.gpu_busy = 1;
 }
 
 void kgsl_pwrscale_idle(struct kgsl_device *device)
 {
 	if (PWRSCALE_ACTIVE(device) && device->pwrscale.policy->idle)
-		if (device->state == KGSL_STATE_ACTIVE)
+		if (device->requested_state != KGSL_STATE_SLUMBER &&
+			device->requested_state != KGSL_STATE_SLEEP)
 			device->pwrscale.policy->idle(device,
 					&device->pwrscale);
+	device->pwrscale.gpu_busy = 0;
 }
 EXPORT_SYMBOL(kgsl_pwrscale_idle);
 
@@ -268,7 +273,18 @@ int kgsl_pwrscale_policy_add_files(struct kgsl_device *device,
 {
 	int ret;
 
+	ret = kobject_add(&pwrscale->kobj, &device->pwrscale_kobj,
+		"%s", pwrscale->policy->name);
+
+	if (ret)
+		return ret;
+
 	ret = sysfs_create_group(&pwrscale->kobj, attr_group);
+
+	if (ret) {
+		kobject_del(&pwrscale->kobj);
+		kobject_put(&pwrscale->kobj);
+	}
 
 	return ret;
 }
@@ -278,6 +294,8 @@ void kgsl_pwrscale_policy_remove_files(struct kgsl_device *device,
 				       struct attribute_group *attr_group)
 {
 	sysfs_remove_group(&pwrscale->kobj, attr_group);
+	kobject_del(&pwrscale->kobj);
+	kobject_put(&pwrscale->kobj);
 }
 
 static void _kgsl_pwrscale_detach_policy(struct kgsl_device *device)
@@ -344,9 +362,7 @@ int kgsl_pwrscale_init(struct kgsl_device *device)
 	if (ret)
 		return ret;
 
-        ret = kobject_init_and_add(&device->pwrscale.kobj, &ktype_pwrscale_policy,
-		&device->pwrscale_kobj, "policy_config");
-
+	kobject_init(&device->pwrscale.kobj, &ktype_pwrscale_policy);
 	return ret;
 }
 EXPORT_SYMBOL(kgsl_pwrscale_init);
