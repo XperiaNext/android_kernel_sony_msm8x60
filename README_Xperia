@@ -1,6 +1,7 @@
 Configuration files can be found in arch/arm/configs.
 
-
-Xperia S => B_fuji_nozomi_defconfig
-Xperia acro S => B_fuji_hikari_row_defconfig
-Xperia Ion => B_fuji_csfb_aoba_defconfig
+LT26i => B_fuji_nozomi_defconfig
+LT26w => B_fuji_hikari_row_defconfig
+LT28h => B_fuji_csfb_aoba_defconfig
+LT29i => B_blue_hayabusa_defconfig
+LT30p => B_blue_mint_defconfig
