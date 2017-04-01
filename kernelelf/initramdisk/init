@@ -42,24 +42,40 @@ mount -t proc proc /proc
 mount -t sysfs sys /sys
 mount -t devtmpfs devtmpfs /dev
 
-LOOP_DEV="/dev/loop0"
-SD_DEV="/dev/mmcblk0p15"
-SD_PART="/sdpart"
-IMAGE="${SD_PART}/mer.img"
-ROOTFSMNTDIR="/mnt"
-INITBIN="/sbin/init"
+wait 5
+echo "List dirs"
+mkdir -p /sdpart
+mount /dev/mmcblk0p14 /sdpart
+echo "List mmcblk0p14"
+cd /sdpart
+ls
+wait 5
+echo "List dirs"
 
-echo "Mounting..."
-mkdir -p ${SD_PART}
-mount ${SD_DEV} ${SD_PART}
+echo "List dirs"
+echo "List dirs"
 
-echo "Booting image..."
-losetup ${LOOP_DEV} ${IMAGE}
-mount ${LOOP_DEV} ${ROOTFSMNTDIR}
+wait 5
 
-umount -l /dev
-umount -l /sys
-umount -l /proc
 
-echo "Switching to rootfs at ${ROOTFSMNTDIR}, with init ${INITBIN}..."
-exec switch_root ${ROOTFSMNTDIR} ${INITBIN}
+#LOOP_DEV="/dev/loop0"
+#SD_DEV="/dev/mmcblk0p14"
+#SD_PART="/sdpart"
+#IMAGE="${SD_PART}/mer.img"
+#ROOTFSMNTDIR="/mnt"
+#INITBIN="/sbin/init"
+
+#echo "Mounting..."
+#mkdir -p ${SD_PART}
+#mount ${SD_DEV} ${SD_PART}
+
+#echo "Booting image..."
+#losetup ${LOOP_DEV} ${IMAGE}
+#mount ${LOOP_DEV} ${ROOTFSMNTDIR}
+
+#umount -l /dev
+#umount -l /sys
+#umount -l /proc
+
+#echo "Switching to rootfs at ${ROOTFSMNTDIR}, with init ${INITBIN}..."
+#exec switch_root ${ROOTFSMNTDIR} ${INITBIN}

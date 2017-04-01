@@ -9,3 +9,13 @@ fastboot reboot
 rm 0
 rm 1
 rm kernel.elf
+
+
+# SEMC
+#SUBSYSTEM=="usb", ATTR{idVendor}=="0fce", ATTR{idProduct}=="0dde", MODE="0666", OWNER="bpaul"  
+
+
+
+
+
+
